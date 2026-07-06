@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Estancia Basin Seed App</title>
+    <link rel="manifest" href="manifest.json">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 0; background-color: #f4f4f9; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        header { background-color: #2c3e50; color: white; padding: 15px; text-align: center; flex-shrink: 0; }
+        header h2 { margin: 0; font-size: 1.4rem; }
+        .search-bar { padding: 10px; background: #fff; border-bottom: 1px solid #ddd; flex-shrink: 0; }
+        .search-bar input { width: 100%; padding: 10px; font-size: 16px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+        
+        .container { display: flex; flex: 1; overflow: hidden; }
+        .list-pane { width: 40%; background: #fff; border-right: 1px solid #ddd; overflow-y: auto; }
+        .list-item { padding: 12px 15px; border-bottom: 1px solid #eee; cursor: pointer; font-size: 14px; }
+        .list-item:hover, .list-item.active { background-color: #e8f4f8; font-weight: bold; }
+        
+        .details-pane { width: 60%; padding: 20px; overflow-y: auto; box-sizing: border-box; }
+        .plant-image { max-width: 100%; max-height: 250px; border-radius: 6px; margin-top: 10px; cursor: zoom-in; box-shadow: 0 2px 5px rgba(0,0,0,0.15); transition: transform 0.2s; }
+        .plant-image:hover { opacity: 0.95; }
+        .radio-group { margin: 15px 0; background: #eee; padding: 8px; border-radius: 6px; display: inline-block; }
+        .radio-group label { margin-right: 15px; font-size: 14px; cursor: pointer; }
+        
+        /* --- FULL SCREEN ZOOM MODAL --- */
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(15, 15, 15, 0.92); overflow: hidden; justify-content: center; align-items: center; }
+        .modal-content-wrapper { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; overflow: hidden; cursor: grab; }
+        .modal-content-wrapper:active { cursor: grabbing; }
+        #modalImg { max-width: 90%; max-height: 90%; transition: transform 0.05s ease-out; transform-origin: center center; user-select: none; pointer-events: none; }
+        .close-btn { position: absolute; top: 15px; right: 25px; color: #f1f1f1; font-size: 40px; font-weight: bold; cursor: pointer; z-index: 1001; }
+        .close-btn:hover { color: #bbb; }
+        .modal-hint { position: absolute; bottom: 15px; color: #aaa; font-size: 12px; pointer-events: none; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h2>Estancia Basin Seed Guide</h2>
+    </header>
+
+    <div class="search-bar">
+        <input type="text" id="searchInput" placeholder="Search plant name or family..." onkeyup="filterPlants()">
+    </div>
+
+    <div class="container">
+        <div class="list-pane" id="plantList"></div>
+        <div class="details-pane" id="plantDetails">
+            <h3>Select a plant from the list</h3>
+            <p>Harvesting rules and high-resolution photos will appear here.</p>
+        </div>
+    </div>
+
+    <div id="imageModal" class="modal">
+        <span class="close-btn" onclick="closeModal()">&times;</span>
+        <div class="modal-content-wrapper" id="modalWrapper">
+            <img id="modalImg" src="">
+        </div>
+        <div class="modal-hint">Scroll to Zoom | Left-Click & Drag to Pan</div>
+    </div>
+
+    <script>
+        let plants = [];
+        let currentPlant = null;
+
+        // Register Service Worker for PWA Offline Mode
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js').then(() => console.log("Service Worker Registered"));
+        }
+
+        // CSV Parser
+        function parseCSV(text) {
+            const lines = text.split('\n');
+            const headers = lines[0].split(',').map(h => h.trim());
+            const result = [];
+            for(let i = 1; i < lines.length; i++) {
+                if(!lines[i].trim()) continue;
+                const currentline = lines[i].split(',');
+                let obj = {};
+                for(let j = 0; j < headers.length; j++) {
+                    obj[headers[j]] = currentline[j] ? currentline[j].trim() : '';
+                }
+                result.push(obj);
+            }
+            return result;
+        }
+
+        fetch('taxa.csv')
+            .then(response => response.text())
+            .then(text => {
+                plants = parseCSV(text);
+                renderList(plants);
+            })
+            .catch(err => console.error("Could not load CSV:", err));
+
+        function renderList(data) {
+            const listElement = document.getElementById('plantList');
+            listElement.innerHTML = '';
+            data.forEach((plant) => {
+                const div = document.createElement('div');
+                div.className = 'list-item';
+                div.innerText = `${plant.scientificName} (${plant.vernacularName || 'N/A'})`;
+                div.onclick = () => {
+                    document.querySelectorAll('.list-item').forEach(el => el.classList.remove('active'));
+                    div.classList.add('active');
+                    showDetails(plant);
+                };
+                listElement.appendChild(div);
+            });
+        }
+
+        function filterPlants() {
+            const query = document.getElementById('searchInput').value.toLowerCase();
+            const filtered = plants.filter(p => 
+                (p.scientificName && p.scientificName.toLowerCase().includes(query)) || 
+                (p.vernacularName && p.vernacularName.toLowerCase().includes(query)) ||
+                (p.family && p.family.toLowerCase().includes(query))
+            );
+            renderList(filtered);
+        }
+
+        function showDetails(plant) {
+            currentPlant = plant;
+            const detailsElement = document.getElementById('plantDetails');
+            
+            detailsElement.innerHTML = `
+                <h3 style="margin-top:0; color:#2c3e50;">${plant.scientificName}</h3>
+                <p><strong>Common Name:</strong> ${plant.vernacularName || 'N/A'}</p>
+                <p><strong>Family:</strong> ${plant.family || 'N/A'}</p>
+                <hr style="border:0; border-top:1px solid #eee; margin:15px 0;">
+                <p><strong>Harvest Window:</strong> <span style="color:#27ae60; font-weight:bold;">${plant.harvest_window || 'Not recorded'}</span></p>
+                <p><strong>Processing & Safety Notes:</strong><br>${plant.processing_notes || 'None recorded.'}</p>
+                
+                <div class="radio-group">
+                    <label><input type="radio" name="photoType" value="live" checked onchange="updatePhoto()"> Living Plant</label>
+                    <label><input type="radio" name="photoType" value="specimen" onchange="updatePhoto()"> Herbarium Sheet</label>
+                </div>
+                <br>
+                <img id="plantPhoto" class="plant-image" src="images_live/${plant.scientificName}.jpg" onclick="openModal(this.src)" title="Click to open full-screen zoom viewer" onerror="this.src=''; this.alt='[No image found for this mode]';">
+            `;
+        }
+
+        function updatePhoto() {
+            if(!currentPlant) return;
+            const mode = document.querySelector('input[name="photoType"]:checked').value;
+            const folder = mode === 'live' ? 'images_live' : 'images';
+            document.getElementById('plantPhoto').src = `${folder}/${currentPlant.scientificName}.jpg`;
+        }
+
+        /* --- MODAL ZOOM & PAN LOGIC --- */
+        let scale = 1, translateX = 0, translateY = 0, isDragging = false, startX, startY;
+        const modal = document.getElementById('imageModal');
+        const modalImg = document.getElementById('modalImg');
+        const wrapper = document.getElementById('modalWrapper');
+
+        function openModal(src) {
+            if(!src || src.endsWith('null') || src === '') return;
+            modal.style.display = 'flex';
+            modalImg.src = src;
+            resetZoom();
+        }
+
+        function closeModal() {
+            modal.style.display = 'none';
+        }
+
+        function resetZoom() {
+            scale = 1; translateX = 0; translateY = 0;
+            applyTransform();
+        }
+
+        function applyTransform() {
+            modalImg.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+        }
+
+        // Zoom via Mouse Wheel
+        wrapper.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const zoomFactor = 0.15;
+            if (e.deltaY < 0) {
+                scale = Math.min(scale + zoomFactor, 8); // Max 8x zoom
+            } else {
+                scale = Math.max(scale - zoomFactor, 0.5); // Min 0.5x zoom
+            }
+            applyTransform();
+        });
+
+        // Pan via Click & Drag
+        wrapper.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            startX = e.clientX - translateX;
+            startY = e.clientY - translateY;
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            translateX = e.clientX - startX;
+            translateY = e.clientY - startY;
+            applyTransform();
+        });
+
+        window.addEventListener('mouseup', () => { isDragging = false; });
+        
+        // Close modal if clicking the background wrapper outside the image
+        wrapper.addEventListener('click', (e) => {
+            if(e.target === wrapper) closeModal();
+        });
+    </script>
+</body>
+</html>
