@@ -94,12 +94,14 @@
         let plants = [];
         let currentPlant = null;
 
-        // --- 1. MASTER VERSION STAMP ---
-        const APP_VERSION = "v7 (July 2026)";
+ // --- 1. MASTER VERSION STAMP ---
+        const APP_VERSION = "v7.1 (July 2026)";
         
-        // Inject the version into the footer
-        const versionEl = document.getElementById("version-display");
-        if (versionEl) versionEl.textContent = APP_VERSION;
+        // Wait for the HTML page to finish drawing, THEN inject the version into the footer!
+        window.addEventListener('DOMContentLoaded', () => {
+            const versionEl = document.getElementById("version-display");
+            if (versionEl) versionEl.textContent = APP_VERSION;
+        });
 
         // --- 2. UPGRADED SERVICE WORKER & UPDATE BANNER LOGIC ---
         if ('serviceWorker' in navigator) {
