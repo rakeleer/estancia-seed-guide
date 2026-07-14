@@ -90,15 +90,57 @@
         </div>
     </div>
 
-    <script>
+<script>
         let plants = [];
         let currentPlant = null;
 
+        // --- 1. MASTER VERSION STAMP ---
+        const APP_VERSION = "v7 (July 2026)";
+        
+        // Inject the version into the footer
+        const versionEl = document.getElementById("version-display");
+        if (versionEl) versionEl.textContent = APP_VERSION;
+
+        // --- 2. UPGRADED SERVICE WORKER & UPDATE BANNER LOGIC ---
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js').then(() => console.log("Service Worker Registered"));
+            let newWorker;
+            const toast = document.getElementById('update-toast');
+            const updateBtn = document.getElementById('update-btn');
+
+            navigator.serviceWorker.register('sw.js').then((reg) => {
+                if (reg.waiting) {
+                    newWorker = reg.waiting;
+                    if (toast) toast.style.display = 'flex';
+                }
+
+                reg.addEventListener('updatefound', () => {
+                    newWorker = reg.installing;
+                    newWorker.addEventListener('statechange', () => {
+                        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                            if (toast) toast.style.display = 'flex';
+                        }
+                    });
+                });
+            });
+
+            if (updateBtn) {
+                updateBtn.addEventListener('click', () => {
+                    if (newWorker) {
+                        newWorker.postMessage({ type: 'SKIP_WAITING' });
+                    }
+                });
+            }
+
+            let refreshing = false;
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                if (!refreshing) {
+                    refreshing = true;
+                    window.location.reload();
+                }
+            });
         }
 		
-// Smarter CSV parser that respects commas inside double quotes
+        // Smarter CSV parser that respects commas inside double quotes
         function parseCSV(text) {
             const lines = text.split('\n');
             const headers = lines[0].split(',').map(h => h.trim());
@@ -111,23 +153,22 @@
                 let inQuote = false;
                 let value = '';
                 
-                // Read the line character by character
                 for (let c = 0; c < lines[i].length; c++) {
                     let char = lines[i][c];
                     
                     if (char === '"' && lines[i][c+1] === '"') {
-                        value += '"'; // Handle double quotes inside a string
+                        value += '"'; 
                         c++;
                     } else if (char === '"') {
-                        inQuote = !inQuote; // Toggle quote state
+                        inQuote = !inQuote; 
                     } else if (char === ',' && !inQuote) {
-                        currentline.push(value.trim()); // Commas outside quotes split the column
+                        currentline.push(value.trim()); 
                         value = '';
                     } else {
                         value += char;
                     }
                 }
-                currentline.push(value.trim()); // Push the final column
+                currentline.push(value.trim()); 
 
                 let obj = {};
                 for(let j = 0; j < headers.length; j++) {
@@ -254,5 +295,16 @@
         window.addEventListener('mouseup', () => { isDragging = false; });
         wrapper.addEventListener('click', (e) => { if(e.target === wrapper) closeImageModal(); });
     </script>
+
+    <!-- App Version Footer -->
+    <footer style="text-align: center; padding: 20px; font-size: 0.85em; color: #666; width: 100%;">
+        Estancia Seed App &bull; <span id="version-display"></span>
+    </footer>
+
+    <!-- Floating Update Toast Banner -->
+    <div id="update-toast" style="display: none; position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #2e7d32; color: white; padding: 12px 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); z-index: 10000; align-items: center; gap: 12px; font-family: sans-serif; white-space: nowrap;">
+        <span>🌱 New plant data available!</span>
+        <button id="update-btn" style="background: white; color: #2e7d32; border: none; padding: 6px 12px; border-radius: 4px; font-weight: bold; cursor: pointer;">Update Now</button>
+    </div>
 </body>
 </html>

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'seed-app-v5';
+const CACHE_NAME = 'seed-app-v7';
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
@@ -24,4 +24,11 @@ self.addEventListener('fetch', event => {
             // If both cache and network fail, do nothing (or return a fallback)
         })
     );
+});
+
+// Listen for the UI button sending the activation signal
+self.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'SKIP_WAITING') {
+        self.skipWaiting();
+    }
 });
